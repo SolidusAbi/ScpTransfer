@@ -35,7 +35,7 @@ public class ScpTo{
       JSch jsch=new JSch();
       
       //Añadido para que tenga un "KnowHost"
-      jsch.setKnownHosts("tmp/known_hosts");
+      jsch.setKnownHosts("ssh/known_hosts");
       HostKeyRepository hkr = jsch.getHostKeyRepository();
       HostKey[] hks=hkr.getHostKey();
       if (hks!=null){
