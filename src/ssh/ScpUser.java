@@ -1,11 +1,9 @@
-package Connection;
+package ssh;
 import javax.swing.JOptionPane;
 import javax.swing.JPasswordField;
 import javax.swing.JTextField;
 
-import com.jcraft.jsch.UIKeyboardInteractive;
 import com.jcraft.jsch.UserInfo;
-
 
 public class ScpUser implements UserInfo {
 
