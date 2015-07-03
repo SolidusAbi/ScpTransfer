@@ -2,9 +2,12 @@ package ssh;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+
+import javax.swing.JOptionPane;
 
 import com.jcraft.jsch.Channel;
 import com.jcraft.jsch.ChannelExec;
@@ -37,20 +40,13 @@ public class ScpTransfer {
 		this.port = port;
 	}
 	
-	public boolean ScpTo(String fileOri, String fileDest, boolean timeStamp){
+	public boolean scpTo(String fileOri, String fileDest, boolean timeStamp){
 		FileInputStream fis=null;
 		try{
 			JSch jsch=new JSch();
 		
-			File knownHostsFile = new File(knownHostsPath);
-			if (knownHostsFile.exists() && knownHostsFile.isFile()){
-				jsch.setKnownHosts(knownHostsPath);
-			}
-			
-			File IdentityFile = new File(identityKeyPath);
-			if (IdentityFile.exists() && IdentityFile.isFile()){
-				jsch.addIdentity(identityKeyPath);
-			}
+			addKnownHosts(jsch);
+			addIdentityFile(jsch);
 			
 			Session session = jsch.getSession(user, host, port);
 			session.setUserInfo(new ScpUser());
@@ -125,9 +121,125 @@ public class ScpTransfer {
 			channel.disconnect();
 			session.disconnect();
 		} catch (JSchException | IOException e){
-			e.printStackTrace();
+			JOptionPane.showMessageDialog(null, e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
 		}
 		return true;
+	}
+	
+	public boolean scpFrom(String remoteFile, String localFile, boolean timeStamp){
+		FileOutputStream fos = null;
+		
+		String prefix=null;
+	    if(new File(localFile).isDirectory())
+	    	prefix=localFile+File.separator;
+	    
+	    JSch jsch=new JSch();
+		
+	    try {
+			addKnownHosts(jsch);
+			addIdentityFile(jsch);
+			
+			Session session = jsch.getSession(user, host, port);
+			session.setUserInfo(new ScpUser());
+			session.connect();
+			
+			// exec 'scp -f remoteFile' remotely
+		    Channel channel=session.openChannel("exec");
+		    execCommand("scp -f "+remoteFile, channel);
+		    
+		    // get I/O streams for remote scp
+		    OutputStream out = channel.getOutputStream();
+		    InputStream in = channel.getInputStream();
+		    
+		    channel.connect();
+		    
+		    byte[] buf=new byte[1024];
+
+		    // send '\0'
+		    buf[0]=0; out.write(buf, 0, 1); out.flush();
+
+		    while(true){
+		    	int c = checkAck(in);
+		    	if (c!='C') //'C' is 67 in ASCII code
+		    		break;
+		    	
+		    	//read '0644'
+		    	in.read(buf, 0, 5);
+		    	
+		    	long fileSize=0L; //Seria bueno echarle un segundo ojo a todo esto... xk no termino de cogerlo
+		    	while (true){
+		    		if (in.read(buf, 0, 1)<0){
+		    			//error
+		    			break;
+		    		}
+		    		if(buf[0]==' ') break;
+		    		fileSize=fileSize*10L+(long)(buf[0]-'0');
+		    	}
+		    	
+		    	String file=null;
+		    	for(int i=0;;i++){
+		    		in.read(buf, i, 1);
+		    		if(buf[i]==(byte)0x0a){ //Hace referencia al estado del socket?, http://www.dialogic.com/webhelp/CSP1010/8.4.1_IPN3/exsapi_quickref_tlv_-_0x0asocket_status_.htm
+		    			file=new String(buf, 0, i);
+		    			break;
+		    		}
+		    	}
+		    	
+		    	System.out.println("filesize="+fileSize+", file="+file);
+		    	
+		    	// send '\0'
+			    buf[0]=0; out.write(buf, 0, 1); out.flush();
+		    	
+			    // read a content of localFile
+		        fos=new FileOutputStream(prefix==null ? localFile : prefix+file);
+			    int foo;
+			    while(true){
+			    	if(buf.length<fileSize)
+			    		foo=buf.length;
+			    	else
+			    		foo=(int)fileSize;
+			    	
+			    	foo=in.read(buf, 0, foo);
+			    	if (foo<0){
+			    		//error
+			    		break;
+			    	}
+			    	fos.write(buf,0,foo);
+			    	fileSize-=foo;
+			    	if(fileSize==0L) break;
+			    }
+		        
+			    fos.close();
+			    fos=null;
+			    
+			    if(checkAck(in)!=0){
+			    	System.exit(0);
+			    }
+			    
+			    // send '\0'
+			    buf[0]=0; out.write(buf, 0, 1); out.flush();
+		    }
+		    
+		    session.disconnect();
+		} catch (JSchException | IOException e) {
+			JOptionPane.showMessageDialog(null, e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+		}
+		
+		return true;
+	}
+	
+	private void addKnownHosts(JSch jsch) throws JSchException{
+		File knownHostsFile = new File(knownHostsPath);
+		if (knownHostsFile.exists() && knownHostsFile.isFile()){
+			jsch.setKnownHosts(knownHostsPath);
+		}
+	}
+	
+	private void addIdentityFile(JSch jsch) throws JSchException{
+		File IdentityFile = new File(identityKeyPath);
+		if (IdentityFile.exists() && IdentityFile.isFile()){
+			jsch.addIdentity(identityKeyPath);
+		}
 	}
 	
 	private int checkAck(InputStream in) throws IOException{
@@ -155,5 +267,9 @@ public class ScpTransfer {
 			}
 		}
 		return b;
+	}
+	
+	private void execCommand(String command, Channel channel){
+		((ChannelExec)channel).setCommand(command);
 	}
 }
