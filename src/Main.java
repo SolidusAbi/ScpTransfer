@@ -5,7 +5,7 @@ public class Main {
 		
 		//My Test
 		ScpTransfer scp = new ScpTransfer("root", "localhost", 2200);
-		scp.ScpTo("tmp/prueba", "pruebaDestino", true);
-		
+		//scp.ScpTo("tmp/prueba", "pruebaDestino", true);
+		scp.scpFrom("pruebaDestino", "tmp/prueba_scpto", false);	
 	}
 }
